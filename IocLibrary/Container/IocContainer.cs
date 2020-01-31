@@ -8,7 +8,7 @@ namespace IocLibrary.Container
 {
     public class IocContainer
     {
-        private readonly Dictionary<Type, Dictionary<string, Func<object>>> _typeDictionary = new Dictionary<Type, Dictionary<string, Func<object>>>();
+        private readonly Dictionary<Type, Dictionary<string, Func<Type, object>>> _typeDictionary = new Dictionary<Type, Dictionary<string, Func<Type, object>>>();
 
         private static IocContainer _instance;
         private static readonly object LockObject = new object();
@@ -45,13 +45,13 @@ namespace IocLibrary.Container
                 name = inType.Name;
             if (_typeDictionary.TryGetValue(inType, out var nameDictionary))
             {
-                nameDictionary.Add(name, () => GetInstance(outType, name));
+                nameDictionary.Add(name, (parentType) => GetInstance(outType, name, parentType));
             }
             else
             {
-                _typeDictionary.Add(inType, new Dictionary<string, Func<object>>
+                _typeDictionary.Add(inType, new Dictionary<string, Func<Type, object>>
                 {
-                    {name, () => GetInstance(outType, name)}
+                    {name, (parentType) => GetInstance(outType, name, parentType)}
                 });
             }
         }
@@ -59,23 +59,23 @@ namespace IocLibrary.Container
         public void RegisterSingleton(Type type)
         {
             var instance = GetInstance(type);
-            _typeDictionary.Add(type, new Dictionary<string, Func<object>>
+            _typeDictionary.Add(type, new Dictionary<string, Func<Type, object>>
             {
-                {type.Name, () => instance }
+                {type.Name, (parentType) => instance }
             });
         }
 
         public void RegisterSingleton<T>(T instance)
         {
-            _typeDictionary.Add(typeof(T), new Dictionary<string, Func<object>>
+            _typeDictionary.Add(typeof(T), new Dictionary<string, Func<Type, object>>
             {
-                { typeof(T).Name, () => instance }
+                { typeof(T).Name, (parentType) => instance }
             });
         }
 
         public T GetInstance<T>(string name = "")
         {
-            return (T) GetInstance(typeof(T), name);
+            return (T) GetInstance(typeof(T),  name);
         }
 
         public List<T> GetInstances<T>()
@@ -85,7 +85,7 @@ namespace IocLibrary.Container
             {
                 foreach (var instantiatableKey in instantiatable.Keys)
                 {
-                    var instance = (T) instantiatable[instantiatableKey]();
+                    var instance = (T) instantiatable[instantiatableKey](null);
                     instances.Add(instance);
                 }
             }
@@ -93,15 +93,15 @@ namespace IocLibrary.Container
             return instances;
         }
 
-        public object GetInstance(Type type, string name = "")
+        public object GetInstance(Type type, string name = "", Type parentType = null)
         {
             if (string.IsNullOrEmpty(name))
                 name = type.Name;
-            if (_typeDictionary.TryGetValue(type, out var instantiatable))
+            if (_typeDictionary.TryGetValue(type, out var instantiatable) && parentType != type)
             {
                 if (instantiatable.TryGetValue(name, out var objectCreator))
-                {
-                    return objectCreator();
+                {                                                                    
+                    return objectCreator(type);
                 }
             }
             var constructor = type.GetConstructors().OrderByDescending( o=> o.GetParameters().Length).First();
