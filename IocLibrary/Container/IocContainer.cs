@@ -9,6 +9,7 @@ namespace IocLibrary.Container
     public class IocContainer
     {
         private readonly Dictionary<Type, Dictionary<string, Func<Type, object>>> _typeDictionary = new Dictionary<Type, Dictionary<string, Func<Type, object>>>();
+        private readonly Dictionary<Type, Func<Type, object>> _contractualMap = new Dictionary<Type, Func<Type, object>>();
 
         private static IocContainer _instance;
         private static readonly object LockObject = new object();
@@ -36,7 +37,6 @@ namespace IocLibrary.Container
             var inType = typeof(TIn);
             var outType = typeof(TOut);
             Register(inType, outType, name);
-            // _typeDictionary.Add(typeof(TIn), () => GetInstance(typeof(TOut)));
         }
 
         public void Register(Type inType, Type outType, string name = "")
@@ -54,6 +54,11 @@ namespace IocLibrary.Container
                     {name, (parentType) => GetInstance(outType, name, parentType)}
                 });
             }
+
+            // also register in contractual map
+            // only register the first value
+            if(_contractualMap.ContainsKey(inType) == false)
+                _contractualMap.Add(inType, (parentType) => GetInstance(outType, "", parentType));
         }
 
         public void RegisterSingleton(Type type)
@@ -104,6 +109,12 @@ namespace IocLibrary.Container
                     return objectCreator(type);
                 }
             }
+
+            if (_contractualMap.TryGetValue(type, out var instantiable) && parentType != type)
+            {
+                return instantiable(type);
+            }
+
             var constructor = type.GetConstructors().OrderByDescending( o=> o.GetParameters().Length).First();
             var args = constructor.GetParameters().Select(param => GetInstance(param.ParameterType)).ToArray();
             var instance = constructor.Invoke(args);
